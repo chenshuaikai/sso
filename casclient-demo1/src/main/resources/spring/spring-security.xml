@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<beans:beans xmlns="http://www.springframework.org/schema/security"
+             xmlns:beans="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/security
+        http://www.springframework.org/schema/security/spring-security-4.2.xsd ">
+
+    <!--取消对应请求路径的安全策略-->
+    <http pattern="/js/**" security="none"/>
+    <http pattern="/login.do" security="none"/>
+    <http pattern="/login/fail.do" security="none"/>
+    <http pattern="/register.do" security="none"/>
+    <http pattern="/logout.do" security="none"/>
+
+
+    <!--    entry-point-ref 入口点引用-->
+    <http use-expressions="false" entry-point-ref="casProcessingFilterEntryPoint">
+        <intercept-url pattern="/**" access="ROLE_ADMIN"/>
+        <csrf disabled="true"/>
+        <!--
+            custom-filter为过滤器
+            position表示将过滤器放在指定位置
+            before：放在指定位置之前
+            after: 放在指定位置之后
+        -->
+        <custom-filter ref="casAuthenticationFilter" position="CAS_FILTER"/>
+        <!--本地登出-->
+        <custom-filter ref="requestSingleLogoutFilter" before="LOGOUT_FILTER"/>
+        <!--CAS登出-->
+        <custom-filter ref="singleLogoutFilter" before="CAS_FILTER"/>
+    </http>
+
+    <!-- CAS入口点 start-->
+    <beans:bean id="casProcessingFilterEntryPoint" class="org.springframework.security.cas.web.CasAuthenticationEntryPoint">
+        <!--单点登录服务器登录URL  用户第一次登录，没有票据，就去请求CAS服务端-->
+        <beans:property name="loginUrl" value="https://clement.com/cas/login"/>
+        <beans:property name="serviceProperties" ref="serviceProperties"/>
+    </beans:bean>
+    <beans:bean id="serviceProperties" class="org.springframework.security.cas.ServiceProperties">
+        <!--配置自身工程的根地址 +/login/cas    票据通过登录成功后返回我的地址-->
+        <beans:property name="service" value="http://127.0.0.1:18081/login/cas"/>
+    </beans:bean>
+    <!-- CAS入口点 end-->
+
+
+    <!--认证过滤  start-->
+    <beans:bean id="casAuthenticationFilter" class="org.springframework.security.cas.web.CasAuthenticationFilter">
+        <beans:property name="authenticationManager" ref="authenticationManager"/>
+    </beans:bean>
+    <!--认证管理器-->
+    <authentication-manager alias="authenticationManager">
+        <authentication-provider ref="casAuthenticationProvider">
+        </authentication-provider>
+    </authentication-manager>
+    <!--认证提供者-->
+    <beans:bean id="casAuthenticationProvider" class="org.springframework.security.cas.authentication.CasAuthenticationProvider">
+       <!--用户自定义的认证类-->
+        <beans:property name="authenticationUserDetailsService">
+            <beans:bean class="org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper">
+                <beans:constructor-arg ref="userDetailService"/>
+            </beans:bean>
+        </beans:property>
+
+        <beans:property name="serviceProperties" ref="serviceProperties"/>
+
+        <!--  tickerValidator 为票据验证器-->
+        <beans:property name="ticketValidator">
+            <beans:bean class="org.jasig.cas.client.validation.Cas20ServiceTicketValidator">
+                <beans:constructor-arg index="0" value="https://clement.com/cas"/>
+            </beans:bean>
+        </beans:property>
+
+        <beans:property name="key" value="an_id_for_this_auth_provider_only"/>
+    </beans:bean>
+    <!--自定认证类-->
+    <beans:bean id="userDetailService" class="com.clement.service.UserDetailServiceImpl"/>
+    <!--认证过滤  end-->
+
+
+
+    <!--单点登出 start-->
+    <beans:bean id="singleLogoutFilter" class="org.jasig.cas.client.session.SingleSignOutFilter"/>
+    <!--经过此配置（本地退出），用户在地址栏输入 本地工程+/logout/cas -->
+    <beans:bean id="requestSingleLogoutFilter" class="org.springframework.security.web.authentication.logout.LogoutFilter">
+        <!--退出，并在后边跟上跳转的地址,可以取修改默认的退出页面跳转该页面(但是并没有实现所有站点的退出)-->
+        <beans:constructor-arg value="https://clement.com/cas/logout?service=http://localhost:18081"/>
+
+        <!--配置退出处理器，实现所有的登出-->
+        <beans:constructor-arg>
+            <beans:bean class="org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler"/>
+        </beans:constructor-arg>
+        <beans:property name="filterProcessesUrl" value="/logout/cas"/>
+    </beans:bean>
+    <!--单点登出 end-->
+
+
+  <!--  &lt;!&ndash;
+    auto-config:表示引入SpringSecurity相关的过滤器
+    use-expressions:是否使用SpEl表达式 即如果为true则写hasRole
+    &ndash;&gt;
+    <http auto-config="true" use-expressions="true">
+        &lt;!&ndash;所有带admin的请求都需要ROLE_ADMIN权限&ndash;&gt;
+        <intercept-url pattern="/**" access="hasRole('ROLE_ADMIN')"/>
+        &lt;!&ndash;自定义登录页面配置
+        login-page：登录页面
+        default-target-url：登录成功跳转页面
+        authentication-failure-url:登录失败跳转地址
+        always-use-default-target:是否使用每次登录成功的路径 即成功首页
+        password-parameter="":自定义表单的name
+         username-parameter="" &ndash;&gt;
+        <form-login login-page="/login.do"
+                    default-target-url="/admin/user/list.do"
+                    authentication-failure-url="/login/fail.do"
+                    always-use-default-target="true"/>
+
+
+        &lt;!&ndash;登出配置&ndash;&gt;
+        <logout logout-success-url="/login"/>
+
+        &lt;!&ndash;关闭CSRF攻击功能&ndash;&gt;
+        <csrf disabled="true"/>
+
+    </http>
+
+    &lt;!&ndash;授权认证管理器&ndash;&gt;
+    <authentication-manager>
+
+        <authentication- user-service-ref="userDetailServiceImpl">
+
+            &lt;!&ndash;引用加密对象&ndash;&gt;
+            <password-encoder hash="md5" base64="false"/>
+
+            &lt;!&ndash;第一种，基于硬编码方式 登录账户配置&ndash;&gt;
+            &lt;!&ndash; <beans:user-service>
+                 &lt;!&ndash;authorities :权限要和拦截的地方配置的权限一致，disabled账户是否禁用&ndash;&gt;
+                 <beans:user name="admin" password="123456" authorities="ROLE_ADMIN" disabled="false"/>
+             </beans:user-service>&ndash;&gt;
+
+
+            &lt;!&ndash;第二种，数据源的方式
+                select password from users where username=?
+                如果登录密码等于数据库查出来的密码，则登录成功
+            &ndash;&gt;
+            &lt;!&ndash;(1) 去数据库校验&ndash;&gt;
+            &lt;!&ndash; <beans:jdbc-user-service data-source-ref="dataSource" users-by-username-query="SELECT passwordNo FROM SYS_user_userAccount WHERE accountNo=?" />&ndash;&gt;
+
+
+
+            &lt;!&ndash;第三种自定义校验器校验 在上边authentication- 标签中配置user-service-ref属性 &ndash;&gt;
+
+
+        </authentication->
+    </authentication-manager>
+
+    &lt;!&ndash;加密工具&ndash;&gt;
+    &lt;!&ndash;    <beans:bean id="encoder" class="org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder">
+            <beans:constructor-arg name="strength" value="0"/>
+        </beans:bean>&ndash;&gt;
+
+    <beans:bean  id="dataSource" class="com.alibaba.druid.pool.DruidDataSource" destroy-method="close">
+        <beans:property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+        <beans:property name="url" value="jdbc:mysql://192.168.186.11:3306/SkyChen?characterEncoding=UTF-8"/>
+        <beans:property name="username" value="root"/>
+        <beans:property name="password" value="SkyChen123456"/>
+        <beans:property name="maxActive" value="10"/>
+        <beans:property name="minIdle" value="5"/>
+    </beans:bean>
+
+
+    &lt;!&ndash;自定义校验器&ndash;&gt;
+    <beans:bean id="userDetailServiceImpl" class="com.clement.service.UserDetailServiceImpl"/>-->
+</beans:beans>
