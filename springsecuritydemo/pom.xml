@@ -100,7 +100,7 @@
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-cas</artifactId>
-      <version>4.2.4.RELEASE</version>
+      <version>4.2.13.RELEASE</version>
     </dependency>
     <!--springSecurity end-->
     <!--spring和springSecurity依赖 end-->
